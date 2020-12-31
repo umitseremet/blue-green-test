@@ -1,0 +1,11 @@
+StackName: 'blue-green-test'
+Parameters:
+- ParameterKey: 'Vpc'
+  ParameterValue: 'vpc-038e3c79'
+- ParameterKey: 'Subnet1'
+  ParameterValue: 'subnet-4fe58861'
+- ParameterKey: 'Subnet2'
+  ParameterValue: 'subnet-6be55055'
+Capabilities:
+  - CAPABILITY_AUTO_EXPAND
+  - CAPABILITY_IAM
