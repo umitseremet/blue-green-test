@@ -6,6 +6,10 @@ Parameters:
   ParameterValue: 'subnet-4fe58861'
 - ParameterKey: 'Subnet2'
   ParameterValue: 'subnet-6be55055'
+- ParameterKey: 'ImageUrl'	
+  ParameterValue: '674293907349.dkr.ecr.us-east-1.amazonaws.com/blue-green-test:v3'	
+- ParameterKey: 'EcrRepoName'	
+  ParameterValue: 'blue-green-test'
 Capabilities:
   - CAPABILITY_AUTO_EXPAND
   - CAPABILITY_IAM
