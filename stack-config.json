@@ -4,6 +4,6 @@
     "Subnet1": "subnet-4fe58861",
     "Subnet2": "subnet-6be55055",
     "EcrRepoName": "blue-green-test",
-    "ImageUrl": "674293907349.dkr.ecr.us-east-1.amazonaws.com/blue-green-test:latest"
+    "ImageUrl": "674293907349.dkr.ecr.us-east-1.amazonaws.com/blue-green-test:build-9e696b21-0729-4ae8-b0f4-9b26ca62de5b"
   }
 }
