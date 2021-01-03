@@ -10,7 +10,7 @@ Parameters:
   BranchName:
     Type: String
   ClusterArn:
-     Type: String
+    Type: String
   ComputeType:
     Type: String
     AllowedValues:
