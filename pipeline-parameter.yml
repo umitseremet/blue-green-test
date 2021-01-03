@@ -1,20 +1,15 @@
 StackName: 'blue-green-test-pipeline'
 Parameters:
-#- ParameterKey: 'StackName'
-#  ParameterValue: 'blue-green-test-pipeline'
 - ParameterKey: 'RepositoryName'
   ParameterValue: 'blue-green-test'
 - ParameterKey: 'BranchName'
   ParameterValue: 'master'
-#- ParameterKey: 'EcsStackName'
-#  ParameterValue: 'blue-green-test'
-#- ParameterKey: 'CodeBuildServiceRole'
-#  ParameterValue: ''
-#- ParameterKey: 'CodePipelineServiceRole'
-#  ParameterValue: ''
-#- ParameterKey: 'CloudFormationServiceRole'
-#  ParameterValue: ''
-#RoleARN: ''
+- ParameterKey: 'GitHubRepo:'
+  ParameterValue: 'blue-green-test'
+- ParameterKey: 'CodeBuildImage'
+  ParameterValue: 'aws/codebuild/amazonlinux2-x86_64-standard:3.0'
+- ParameterKey: 'BranchName'
+  ParameterValue: 'master'
 Capabilities:
   - CAPABILITY_AUTO_EXPAND
   - CAPABILITY_IAM
