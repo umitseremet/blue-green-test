@@ -1,6 +1,6 @@
 # Blue-Green Continuous Deployment via CodePipeline on Fargate
 
-**Creating th structure:**
+**Creating the structure:**
 
 `aws cloudformation create-stack --template-body file://pipeline.yml --cli-input-yaml file://pipeline-parameter.yml`
 
