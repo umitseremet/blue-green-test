@@ -7,13 +7,10 @@ Parameters:
     Type: String
   GitHubRepo:
     Type: String
-    Default: blue-green-test
   BranchName:
     Type: String
-    Default: master
   ClusterArn:
-    Type: String
-    Default: arn:aws:ecs:us-east-1:674293907349:cluster/blue-green-test-cluster  
+     Type: String
   ComputeType:
     Type: String
     AllowedValues:
@@ -21,11 +18,8 @@ Parameters:
       - BUILD_GENERAL1_MEDIUM
       - BUILD_GENERAL1_LARGE
     Default: BUILD_GENERAL1_SMALL
-
   CodeBuildImage:
     Type: String
-    Default: aws/codebuild/amazonlinux2-x86_64-standard:3.0
-
 
 
 Resources:
@@ -104,7 +98,7 @@ Resources:
                 Resource: '*'
                 Condition:
                   ArnEquals:
-                    ecs:cluster: !Sub ${ClusterArn}
+                    ecs:cluster: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${GitHubRepo}-cluster
 
 
   CloudFormationServiceRole:
