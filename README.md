@@ -17,6 +17,7 @@
 *Run the command below with the specifik order*
 
 `aws cloudformation delete-stack --stack-name blue-green-test-ecs` 
+
 `aws cloudformation delete-stack --stack-name blue-green-test-pipeline`
 
 *Delete the S3 created with aws-cli or manually*
