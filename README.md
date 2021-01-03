@@ -2,7 +2,12 @@
 
 **Creating the structure:**
 
-`aws cloudformation create-stack --template-body file://pipeline.yml --cli-input-yaml file://pipeline-parameter.yml`
+*Set the parameters in the following files*
+
+`cloudformation/pipeline-parameter.yml`
+`cloudformation/stack-config.yml`
+
+`aws cloudformation create-stack --template-body file://cloudformation/pipeline.yml --cli-input-yaml file://cloudformation/pipeline-parameter.yml`
 
 
 **Destroying the structure:**
