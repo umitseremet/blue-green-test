@@ -1,0 +1,797 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Blue-Green Deployment Test on ECS-Fargate
+
+# This template deploy a service on AWS Fargate, hosted in a public subnet, and accessible via a public load balancer.
+# It uses CodeDeploy's CloudFormation integration to deploy ECS task definition changes using blue-green deployments to shift traffic.
+
+Parameters:
+  # Vpc:
+  #   Type: AWS::EC2::VPC::Id
+  # Subnet1:
+  #   Type: AWS::EC2::Subnet::Id
+  # Subnet2:
+  #   Type: AWS::EC2::Subnet::Id
+  # EcrRepoName:
+  #   Type: String
+  # ImageUrl:
+  #   Type: String
+  
+  ###########
+  RepositoryName:
+    Type: String
+  # StackName: 
+  #   Type: String
+  #   Default: blue-green-test-pipeline 
+  GitHubRepo:
+    Type: String
+    Default: blue-green-test
+  BranchName:
+    Type: String
+    Default: master
+  ClusterArn:
+    Type: String
+    Default: arn:aws:ecs:us-east-1:674293907349:cluster/blue-green-test-cluster  
+  ComputeType:
+    Type: String
+    AllowedValues:
+      - BUILD_GENERAL1_SMALL
+      - BUILD_GENERAL1_MEDIUM
+      - BUILD_GENERAL1_LARGE
+    Default: BUILD_GENERAL1_SMALL
+
+  CodeBuildImage:
+    Type: String
+    Default: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+
+  ###########
+
+
+
+
+Transform:
+  - "AWS::CodeDeployBlueGreen"
+
+Hooks:
+  CodeDeployBlueGreenHook:
+    Type: AWS::CodeDeploy::BlueGreen
+    Properties:
+      TrafficRoutingConfig:
+       #CustomDeploymentFargateLinear1Of3in1Minutes
+        Type: TimeBasedLinear
+        TimeBasedLinear:
+          StepPercentage: 34
+          BakeTimeMins: 1
+      AdditionalOptions: 
+        # After canary period, shift 100% of prod traffic, then wait 2 minutes
+        TerminationWaitTimeInMinutes: 2
+      Applications:
+        - Target:
+            Type: AWS::ECS::Service
+            LogicalID: Service
+          ECSAttributes:
+            TaskDefinitions:
+              - TaskDefinitionBlue
+              - TaskDefinitionGreen
+            TaskSets:
+              - TaskSetBlue
+              - TaskSetGreen
+            TrafficRouting:
+              ProdTrafficRoute:
+                Type: AWS::ElasticLoadBalancingV2::Listener
+                LogicalID: ProductionListener
+              TestTrafficRoute:
+                Type: AWS::ElasticLoadBalancingV2::Listener
+                LogicalID: TestListener
+              TargetGroups:
+                - ServiceTargetGroupBlue
+                - ServiceTargetGroupGreen
+
+Resources:
+  # ECS Resources:
+  # CodeDeploy will shift traffic on every deployment between the "blue" task definition / task set
+  # associated with the "blue" target group, and a "green" task definition / task set associated
+  # with the "green" target group.
+  #
+  # Any change to an immutable property of the task definition or task set, for example, the image
+  # ID in the task definition, will trigger a blue-green CodeDeploy deployment.
+  #
+  # Note that the 'TaskDefinitionGreen' and 'TaskSetGreen' resources are referenced in the 'Hooks' section
+  # above, but are *not* defined in the Resources section.  This is intentional: the 'AWS::CodeDeployBlueGreen'
+  # Transform takes care of creating those resources in the template when the deployment will flip from "blue"
+  # to "green".  When the next deployment flips from "green" to "blue", the green task definition and task set
+  # are removed.
+
+
+
+#################
+  CodePipelineManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:Get*
+              - s3:PutObject*
+            Resource: '*'
+
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns: 
+        - !Ref CodePipelineManagedPolicy
+      Policies:
+        - PolicyName: CodeBuild
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                   - codebuild:StartBuild
+                   - codebuild:BatchGetBuilds
+                Resource:
+                   - !GetAtt BuildProject.Arn
+              #newly added
+              - Effect: Allow
+                Action: 
+                   - "cloudformation:*"
+                Resource: "*"
+        - PolicyName: CodeDeploy   
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:  
+              - Effect: Allow
+                Action: 
+                   - "codedeploy:*"
+                Resource: "*"  
+        - PolicyName: ECS
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              # ECS Deployments
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: '*'
+                Condition:
+                  StringEqualsIfExists:
+                    iam:PassedToService:
+                      - ecs-tasks.amazonaws.com
+              - Effect: Allow
+                Action:
+                  - ecs:DescribeTaskDefinition
+                  - ecs:RegisterTaskDefinition
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:UpdateService
+                Resource: '*'
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Sub ${ClusterArn}
+
+
+  CloudFormationServiceRole:
+    # This Role will actually do all of the heavy lifting and resouce
+    # creation
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        -
+          PolicyName: CloudformationAccess
+          PolicyDocument:
+            # This policy defines what the users can actually do
+            # With Cloudformation
+            Version: 2012-10-17
+            Statement:
+              - 
+                Effect: Allow
+                Action: "*"
+                Resource: "*"                  
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Name: !Sub ${GitHubRepo}
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: '1'
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: source
+              Configuration:
+                Owner: "umitseremet"
+                Repo: !Sub ${GitHubRepo}
+                Branch: !Sub ${BranchName}
+                OAuthToken: "{{resolve:secretsmanager:GitHubPersonalAccessTokenUmitForTest:SecretString:GitHubPersonalAccessTokenUmitForTest}}"
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build
+              InputArtifacts:
+                - Name: source
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: "1"
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref BuildProject
+              OutputArtifacts:
+                - Name: build
+              RunOrder: 1
+        - Name: CreateChangeSet
+          Actions:
+            - Name: CreateChangeSet
+              InputArtifacts:
+                - Name: build
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: '1'
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Sub ${GitHubRepo}
+                Capabilities: CAPABILITY_AUTO_EXPAND,CAPABILITY_IAM
+                ChangeSetName: update
+                RoleArn: !GetAtt  CloudFormationServiceRole.Arn
+                TemplatePath: 'build::ecs.yml'
+                TemplateConfiguration: 'build::stack-config.json'
+
+        - Name: ExecuteChangeSet
+          Actions:
+            - Name: ExecuteChangeSet
+              InputArtifacts:
+                - Name: build
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: '1'
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: !Sub ${GitHubRepo}
+                Capabilities: CAPABILITY_AUTO_EXPAND,CAPABILITY_IAM
+                ChangeSetName: update
+              RunOrder: 1
+  
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Effect: Allow
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${GitHubRepo}
+                  - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/node
+              - Action: ecr:GetAuthorizationToken
+                Effect: Allow
+                Resource: "*"
+              - Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Effect: "Allow"  
+                Resource:
+                  - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+              - Action:
+                  - "s3:PutObject"
+                  - "s3:GetObject"
+                  - "s3:GetObjectVersion"
+                  - "s3:ListBucket"
+                Effect: Allow  
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub ${ArtifactBucket.Arn}/*
+  
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${GitHubRepo}-ci
+      Description: Build war file for rest application
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Cache:
+        Modes:
+          - LOCAL_DOCKER_LAYER_CACHE
+          - LOCAL_SOURCE_CACHE 
+        Type: LOCAL   
+      Environment:  
+        ComputeType: !Ref ComputeType
+        Image: !Ref CodeBuildImage
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: GITHUBREPO
+            Value: !Sub ${GitHubRepo}
+      Source:
+        Type: GITHUB
+        Location: !Sub https://github.com/umitseremet/${GitHubRepo}.git
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - AWS_ACCOUNT_ID=`echo $CODEBUILD_BUILD_ARN | awk -F":" '{print $5}'`
+                - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${GITHUBREPO}
+                - export IMAGE_TAG=build-`echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}'`
+                - echo $CODEBUILD_RESOLVED_SOURCE_VERSION      
+                - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
+            install:
+              runtime-versions:
+                java: corretto11
+            build:
+              commands:
+                - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDetail.json
+                - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
+                - docker push $REPOSITORY_URI:$IMAGE_TAG
+                - sed -i -e "s/CHANGE_ME/$IMAGE_TAG/g" stack-config.json
+          artifacts:
+            files: 
+               - imageDetail.json
+               - ecs.yml
+               - stack-config.json
+      TimeoutInMinutes: 15
+      Tags:
+        - Key: Name
+          Value: !Sub ${GitHubRepo}   
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      #BucketName: !Sub ${GitHubRepo}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: IntelligentTieringTransition
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: INTELLIGENT_TIERING
+      # VersioningConfiguration:
+      #   Status: Enabled
+
+  ArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Id: SSEandSSLPolicy
+        Statement:
+          - Sid: Deny unencrypted object uploads
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub ${ArtifactBucket.Arn}/*
+            Condition:
+              'Null':
+                s3:x-amz-server-side-encryption: true
+              Bool:
+                aws:SecureTransport: false
+          - Sid: Deny deleting the dummy artifact
+            Effect: Deny
+            Principal: '*'
+            Action: s3:DeleteObject
+            Resource: !Sub ${ArtifactBucket.Arn}/dummy/artifact.zip        
+
+
+#################
+
+
+  # TaskDefinitionBlue:
+  #   Type: AWS::ECS::TaskDefinition
+  #   Properties:
+  #     ContainerDefinitions:
+  #       - Essential: true
+  #         Image: !Ref ImageUrl
+  #         LogConfiguration:
+  #           LogDriver: awslogs
+  #           Options:
+  #             awslogs-group: !Ref ServiceLogGroup
+  #             awslogs-stream-prefix: Service
+  #             awslogs-region: !Ref AWS::Region
+  #         Name: web
+  #         PortMappings:
+  #           - ContainerPort: 80
+  #             Protocol: tcp
+  #     Cpu: "256"
+  #     ExecutionRoleArn: !GetAtt ServiceTaskExecutionRole.Arn
+  #     Family: !Ref AWS::StackName
+  #     Memory: "512"
+  #     NetworkMode: awsvpc
+  #     RequiresCompatibilities:
+  #       - FARGATE
+  #     TaskRoleArn: !GetAtt ServiceTaskRole.Arn
+
+  # TaskSetBlue:
+  #   Type: AWS::ECS::TaskSet
+  #   Properties:
+  #     Cluster: !Ref Cluster
+  #     Service: !Ref Service
+  #     Scale:
+  #       Unit: PERCENT
+  #       Value: 100
+  #     TaskDefinition: !Ref TaskDefinitionBlue
+  #     LaunchType: FARGATE
+  #     LoadBalancers:
+  #       - ContainerName: web
+  #         ContainerPort: 80
+  #         TargetGroupArn: !Ref ServiceTargetGroupBlue
+  #     NetworkConfiguration:
+  #       AwsVpcConfiguration:
+  #         AssignPublicIp: ENABLED
+  #         SecurityGroups:
+  #           - !GetAtt ServiceSecurityGroup.GroupId
+  #         Subnets:
+  #           - !Ref Subnet1
+  #           - !Ref Subnet2
+  
+  # Cluster:
+  #  Type: AWS::ECS::Cluster
+  #  Properties:
+  #    ClusterName: !Sub ${AWS::StackName}-cluster
+      
+
+  # Service:
+  #   Type: AWS::ECS::Service
+  #   Properties:
+  #     Cluster: !Ref Cluster
+  #     DesiredCount: 3
+  #     #LaunchType: FARGATE
+  #     DeploymentController:
+  #       Type: EXTERNAL
+  #   DependsOn:
+  #     - ServiceTargetGroupBlue
+  #     - ServiceTargetGroupGreen
+  #     - ProductionListener
+  #     - TestListener
+
+  # PrimaryTaskSet:
+  #   Type: AWS::ECS::PrimaryTaskSet
+  #   Properties:
+  #     Cluster: !Ref Cluster
+  #     Service: !Ref Service
+  #     TaskSetId: !GetAtt TaskSetBlue.Id
+
+  # ServiceLogGroup:
+  #   Type: AWS::Logs::LogGroup
+
+  # The public load balancer
+  # LoadBalancer:
+  #   Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+  #   Properties:
+  #     Name: !Sub ${AWS::StackName}
+  #     Scheme: internet-facing
+  #     SecurityGroups:
+  #       - !GetAtt LoadBalancerSecurityGroup.GroupId
+  #     Subnets:
+  #       - !Ref Subnet1
+  #       - !Ref Subnet2
+  #     Type: application
+
+  # Target groups:
+  # We need two target groups that the ECS containers can be
+  # registered to.  CodeDeploy will shift traffic between these
+  # two target groups.
+  # ServiceTargetGroupBlue:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     Name: !Sub ${AWS::StackName}-tg-1
+  #     HealthCheckIntervalSeconds: 5
+  #     HealthCheckPath: /health
+  #     HealthCheckProtocol: HTTP
+  #     HealthyThresholdCount: 2
+  #     UnhealthyThresholdCount: 3
+  #     HealthCheckTimeoutSeconds: 4
+  #     TargetGroupAttributes:
+  #       - Key: 'deregistration_delay.timeout_seconds'
+  #         Value: 5
+  #     Port: 80
+  #     Protocol: HTTP
+  #     TargetType: ip
+  #     VpcId: !Ref Vpc
+
+  # ServiceTargetGroupGreen:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     Name: !Sub ${AWS::StackName}-tg-2
+  #     HealthCheckIntervalSeconds: 5
+  #     HealthCheckPath: /health
+  #     HealthCheckProtocol: HTTP
+  #     HealthyThresholdCount: 2
+  #     UnhealthyThresholdCount: 3
+  #     HealthCheckTimeoutSeconds: 4
+  #     TargetGroupAttributes:
+  #       - Key: 'deregistration_delay.timeout_seconds'
+  #         Value: 5
+  #     Port: 80
+  #     Protocol: HTTP
+  #     TargetType: ip
+  #     VpcId: !Ref Vpc
+
+  # Listeners:
+  # CodeDeploy will shift traffic from blue to green and vice-versa
+  # in both the production and test listeners.
+  # The production listener is used for normal, production traffic.
+  # The test listener is used for test traffic, like integration tests
+  # which can run as part of a CodeDeploy deployment hook prior to
+  # traffic being shifted in the production listener.
+  # ProductionListener:
+  #   Type: AWS::ElasticLoadBalancingV2::Listener
+  #   Properties:
+  #     DefaultActions:
+  #       - Type: forward
+  #         ForwardConfig:
+  #           TargetGroups:
+  #             - TargetGroupArn: !Ref ServiceTargetGroupBlue
+  #               Weight: 100
+  #     LoadBalancerArn: !Ref LoadBalancer
+  #     Port: 80
+  #     Protocol: HTTP
+
+  # TestListener:
+  #   Type: AWS::ElasticLoadBalancingV2::Listener
+  #   Properties:
+  #     DefaultActions:
+  #       - Type: forward
+  #         ForwardConfig:
+  #           TargetGroups:
+  #             - TargetGroupArn: !Ref ServiceTargetGroupBlue
+  #               Weight: 100
+  #     LoadBalancerArn: !Ref LoadBalancer
+  #     Port: 9000
+  #     Protocol: HTTP
+
+  # Alarms:
+  # These resources alarm on unhealthy hosts and HTTP 500s at the target group level.
+  # Note that stack updates will *not* automatically rollback based on these alarms.
+  # After the stack is created, the alarms need to manually be configured as rollback
+  # triggers on the stack.
+  # Directions: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-rollback-triggers.html
+  # UnhealthyHostsAlarmBlue:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmName: !Sub ${AWS::StackName}-Unhealthy-Hosts-Blue
+  #     ComparisonOperator: GreaterThanOrEqualToThreshold
+  #     EvaluationPeriods: 2
+  #     Dimensions:
+  #       - Name: TargetGroup
+  #         Value: !GetAtt ServiceTargetGroupBlue.TargetGroupFullName
+  #       - Name: LoadBalancer
+  #         Value: !GetAtt LoadBalancer.LoadBalancerFullName
+  #     MetricName: UnHealthyHostCount
+  #     Namespace: AWS/ApplicationELB
+  #     Period: 300
+  #     Statistic: Average
+  #     Threshold: 1
+
+  # Http5xxAlarmBlue:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmName: !Sub ${AWS::StackName}-Http-500-Blue
+  #     ComparisonOperator: GreaterThanOrEqualToThreshold
+  #     EvaluationPeriods: 1
+  #     Dimensions:
+  #       - Name: TargetGroup
+  #         Value: !GetAtt ServiceTargetGroupBlue.TargetGroupFullName
+  #       - Name: LoadBalancer
+  #         Value: !GetAtt LoadBalancer.LoadBalancerFullName
+  #     MetricName: HTTPCode_Target_5XX_Count
+  #     Namespace: AWS/ApplicationELB
+  #     Period: 300
+  #     Statistic: Sum
+  #     Threshold: 1
+
+  # UnhealthyHostsAlarmGreen:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmName: !Sub ${AWS::StackName}-Unhealthy-Hosts-Green
+  #     ComparisonOperator: GreaterThanOrEqualToThreshold
+  #     EvaluationPeriods: 2
+  #     Dimensions:
+  #       - Name: TargetGroup
+  #         Value: !GetAtt ServiceTargetGroupGreen.TargetGroupFullName
+  #       - Name: LoadBalancer
+  #         Value: !GetAtt LoadBalancer.LoadBalancerFullName
+  #     MetricName: UnHealthyHostCount
+  #     Namespace: AWS/ApplicationELB
+  #     Period: 300
+  #     Statistic: Average
+  #     Threshold: 1
+
+  # Http5xxAlarmGreen:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmName: !Sub ${AWS::StackName}-Http-500-Green
+  #     ComparisonOperator: GreaterThanOrEqualToThreshold
+  #     EvaluationPeriods: 1
+  #     Dimensions:
+  #       - Name: TargetGroup
+  #         Value: !GetAtt ServiceTargetGroupGreen.TargetGroupFullName
+  #       - Name: LoadBalancer
+  #         Value: !GetAtt LoadBalancer.LoadBalancerFullName
+  #     MetricName: HTTPCode_Target_5XX_Count
+  #     Namespace: AWS/ApplicationELB
+  #     Period: 300
+  #     Statistic: Sum
+  #     Threshold: 1
+
+  # Security Groups:
+  # Allow traffic to the load balancer from the internet,
+  # and from the load balancer to the ECS containers.
+  # ServiceSecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: 'Security group for blue-green-cfn service'
+  #     SecurityGroupEgress:
+  #       - CidrIp: 0.0.0.0/0
+  #         Description: Allow all outbound traffic by default
+  #         IpProtocol: "-1"
+  #     VpcId: !Ref Vpc
+
+  # LoadBalancerSecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: 'Security group for blue-green-cfn  load balancer'
+  #     SecurityGroupIngress:
+  #       - CidrIp: 0.0.0.0/0
+  #         Description: Allow from anyone on production traffic port 80
+  #         FromPort: 80
+  #         IpProtocol: tcp
+  #         ToPort: 80
+  #       - CidrIp: 0.0.0.0/0
+  #         Description: Allow from anyone on test traffic ports 9000 - 9002
+  #         FromPort: 9000
+  #         IpProtocol: tcp
+  #         ToPort: 9002
+  #     VpcId: !Ref Vpc
+
+  # LoadBalancerSecurityGroupToServiceSecurityGroupEgress:
+  #   Type: AWS::EC2::SecurityGroupEgress
+  #   Properties:
+  #     GroupId: !GetAtt LoadBalancerSecurityGroup.GroupId
+  #     IpProtocol: tcp
+  #     Description: Load balancer to target
+  #     DestinationSecurityGroupId: !GetAtt ServiceSecurityGroup.GroupId
+  #     FromPort: 80
+  #     ToPort: 80
+
+  # LoadBalancerSecurityGroupToServiceSecurityGroupIngress:
+  #   Type: AWS::EC2::SecurityGroupIngress
+  #   Properties:
+  #     IpProtocol: tcp
+  #     Description: Load balancer to target
+  #     FromPort: 80
+  #     GroupId: !GetAtt ServiceSecurityGroup.GroupId
+  #     SourceSecurityGroupId: !GetAtt LoadBalancerSecurityGroup.GroupId
+  #     ToPort: 80
+
+  # Roles:
+  # Task role defines the policy that the ECS tasks will have, i.e. the code running in the containers.
+  # By default, the task role below has no permissions.
+  # Task execution role provides permissions to ECS to run the tasks, like pulling the image from ECR
+  # and pushing logs to CloudWatch Logs.
+#   ServiceTaskRole:
+#     Type: AWS::IAM::Role
+#     Properties:
+#       AssumeRolePolicyDocument:
+#         Statement:
+#           - Action: sts:AssumeRole
+#             Effect: Allow
+#             Principal:
+#               Service: ecs-tasks.amazonaws.com
+#         Version: "2012-10-17"
+
+#   ServiceTaskExecutionRole:
+#     Type: AWS::IAM::Role
+#     Properties:
+#       AssumeRolePolicyDocument:
+#         Statement:
+#           - Action: sts:AssumeRole
+#             Effect: Allow
+#             Principal:
+#               Service: ecs-tasks.amazonaws.com
+#         Version: "2012-10-17"
+
+#   ServiceTaskExecutionRolePolicy:
+#     Type: AWS::IAM::Policy
+#     Properties:
+#       PolicyDocument:
+#         Statement:
+#           - Action:
+#               - ecr:BatchCheckLayerAvailability
+#               - ecr:GetDownloadUrlForLayer
+#               - ecr:BatchGetImage
+#             Effect: Allow
+#             Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepoName}
+#           - Action: ecr:GetAuthorizationToken
+#             Effect: Allow
+#             Resource: "*"
+#           - Action:
+#               - logs:CreateLogStream
+#               - logs:PutLogEvents
+#             Effect: Allow
+#             Resource: !GetAtt ServiceLogGroup.Arn
+#         Version: "2012-10-17"
+#       PolicyName: !Sub ${AWS::StackName}-ServiceTaskExecutionRolePolicy
+#       Roles:
+#         - !Ref ServiceTaskExecutionRole
+
+# Outputs:
+#   ServiceURL:
+#     Value:
+#       Fn::Join:
+#         - ""
+#         - - http://
+#           - Fn::GetAtt:
+#               - LoadBalancer
+#               - DNSName
+#   ServiceDomain:
+#     Value:
+#       Fn::GetAtt:
+#         - LoadBalancer
+#         - DNSName
