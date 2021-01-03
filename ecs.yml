@@ -30,7 +30,7 @@ Hooks:
         TimeBasedLinear:
           StepPercentage: 34
           BakeTimeMins: 1
-      AdditionalOptions: 
+      AdditionalOptions:
         # After canary period, shift 100% of prod traffic, then wait 2 minutes
         TerminationWaitTimeInMinutes: 2
       Applications:
@@ -116,19 +116,19 @@ Resources:
           Subnets:
             - !Ref Subnet1
             - !Ref Subnet2
-  
+      PlatformVersion: 1.4.0
+
   Cluster:
    Type: AWS::ECS::Cluster
    Properties:
      ClusterName: !Sub ${AWS::StackName}-cluster
-      
+
 
   Service:
     Type: AWS::ECS::Service
     Properties:
       Cluster: !Ref Cluster
       DesiredCount: 3
-      #LaunchType: FARGATE
       DeploymentController:
         Type: EXTERNAL
     DependsOn:
