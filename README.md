@@ -34,7 +34,7 @@
 
 **Destroying the structure:**
 
-*Run the command below with the specifik order*
+*Run the command below with the specific order*
 
 `aws cloudformation delete-stack --stack-name blue-green-test-ecs` 
 
