@@ -17,6 +17,7 @@
 *Run the command below after setting STACK_NAME with the value you had already set on stack-config.yml before*
 
 > STACK_NAME=blue-green-test-ecs
+> 
 > aws cloudformation update-stack \
 >   --region us-east-1 \
 >   --stack-name $STACK_NAME  \
