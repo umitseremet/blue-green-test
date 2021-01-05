@@ -18,8 +18,7 @@
 
 ```sh
  STACK_NAME=blue-green-test-ecs
- npm install -d
-  aws cloudformation update-stack \
+ aws cloudformation update-stack \
     --region us-east-1 \
     --stack-name $STACK_NAME  \
     --use-previous-template \
