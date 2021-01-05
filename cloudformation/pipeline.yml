@@ -12,8 +12,7 @@ Parameters:
     Type: String
     Default: master
   ClusterArn:
-    Type: String
-    Default: arn:aws:ecs:us-east-1:674293907349:cluster/blue-green-test-cluster  
+    Type: String 
   ComputeType:
     Type: String
     AllowedValues:
@@ -104,7 +103,8 @@ Resources:
                 Resource: '*'
                 Condition:
                   ArnEquals:
-                    ecs:cluster: !Sub ${ClusterArn}
+                    ecs:cluster: !Sub arn:aws:ecs:us-east-1:${AWS::AccountId}:cluster/blue-green-test-cluster 
+                    
 
 
   CloudFormationServiceRole:
@@ -280,6 +280,8 @@ Resources:
         EnvironmentVariables:
           - Name: GITHUBREPO
             Value: !Sub ${GitHubRepo}
+          - Name: REGION
+            Value: ${AWS::Region}
       Source:
         Type: GITHUB
         Location: !Sub https://github.com/umitseremet/${GitHubRepo}.git
@@ -288,9 +290,6 @@ Resources:
           phases:
             pre_build:
               commands:
-                - VPC_ID=`aws ec2 describe-vpcs --region us-east-1 --filters "Name=isDefault, Values=true" --query 'Vpcs[].VpcId' --output text`
-                - SUBNET_1=`aws ec2 describe-subnets --region us-east-1 --filters "Name=vpc-id,Values=$VPC_ID" "Name=default-for-az,Values=true" --query 'Subnets[0].SubnetId' --output text | tr "\\t" ","`
-                - SUBNET_2=`aws ec2 describe-subnets --region us-east-1 --filters "Name=vpc-id,Values=$VPC_ID" "Name=default-for-az,Values=true" --query 'Subnets[1].SubnetId' --output text | tr "\\t" ","`
                 - AWS_ACCOUNT_ID=`echo $CODEBUILD_BUILD_ARN | awk -F":" '{print $5}'`
                 - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${GITHUBREPO}
                 - export IMAGE_TAG=build-`echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}'`
@@ -301,6 +300,10 @@ Resources:
                 java: corretto11
             build:
               commands:
+                - VPC_ID=`aws ec2 describe-vpcs --region $REGION --filters "Name=isDefault, Values=true" --query 'Vpcs[].VpcId' --output text`
+                - SUBNET_1=`aws ec2 describe-subnets --region $REGION  --filters "Name=vpc-id,Values=$VPC_ID" "Name=default-for-az,Values=true" --query 'Subnets[0].SubnetId' --output text | tr "\\t" ","`
+                - SUBNET_2=`aws ec2 describe-subnets --region $REGION  --filters "Name=vpc-id,Values=$VPC_ID" "Name=default-for-az,Values=true" --query 'Subnets[1].SubnetId' --output text | tr "\\t" ","`
+                - sed -i -e "s/CHANGE_ID/$AWS_ACCOUNT_ID/g" Dockerfile
                 - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDetail.json
                 - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
                 - docker push $REPOSITORY_URI:$IMAGE_TAG
