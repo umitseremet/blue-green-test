@@ -299,10 +299,11 @@ Resources:
             build:
               commands:
                 - sed -i -e "s/CHANGE_ID/$AWS_ACCOUNT_ID/g" Dockerfile
+                - sed -i -e "s/CHANGE_ID/$AWS_ACCOUNT_ID/g" ./cloudformation/stack-config.json
+                - sed -i -e "s/CHANGE_ME/$IMAGE_TAG/g" ./cloudformation/stack-config.json
                 - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDetail.json
                 - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
                 - docker push $REPOSITORY_URI:$IMAGE_TAG
-                - sed -i -e "s/CHANGE_ME/$IMAGE_TAG/g" ./cloudformation/stack-config.json
           artifacts:
             files: 
                - imageDetail.json
