@@ -11,8 +11,6 @@ Parameters:
   BranchName:
     Type: String
     Default: master
-  ClusterArn:
-    Type: String 
   ComputeType:
     Type: String
     AllowedValues:
