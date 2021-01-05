@@ -29,7 +29,7 @@
 >        ParameterKey=Subnet2,UsePreviousValue=true \
 >        ParameterKey=ImageUrl,UsePreviousValue=true \
 >        ParameterKey=EcrRepoName,UsePreviousValue=true \
->   --rollback-configuration "RollbackTriggers=[{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Unhealthy-Hosts-Blue,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Http-500-Blue,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Unhealthy-Hosts-Green,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Http-500-Green,Type=AWS::CloudWatch::Alarm}]" `
+>   --rollback-configuration "RollbackTriggers=[{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Unhealthy-Hosts-Blue,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Http-500-Blue,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Unhealthy-Hosts-Green,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Http-500-Green,Type=AWS::CloudWatch::Alarm}]"
 
 
 **Destroying the structure:**
