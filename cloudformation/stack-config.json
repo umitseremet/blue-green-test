@@ -1,9 +1,9 @@
 {
   "Parameters": {
-    "Vpc": "vpc-038e3c79",
-    "Subnet1": "subnet-4fe58861",
-    "Subnet2": "subnet-6be55055",
+    "Vpc": "CHANGE_VPC",
+    "Subnet1": "CHANGE_SUBNET_1",
+    "Subnet2": "CHANGE_SUBNET_2",
     "EcrRepoName": "blue-green-test",
-    "ImageUrl": "674293907349.dkr.ecr.us-east-1.amazonaws.com/blue-green-test:CHANGE_ME"
+    "ImageUrl": "CHANGE_ID.dkr.ecr.us-east-1.amazonaws.com/blue-green-test:CHANGE_ME"
   }
 }

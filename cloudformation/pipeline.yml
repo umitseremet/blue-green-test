@@ -288,6 +288,9 @@ Resources:
           phases:
             pre_build:
               commands:
+                - VPC_ID=`aws ec2 describe-vpcs --region us-east-1 --filters "Name=isDefault, Values=true" --query 'Vpcs[].VpcId' --output text`
+                - SUBNET_1=`aws ec2 describe-subnets --region us-east-1 --filters "Name=vpc-id,Values=$VPC_ID" "Name=default-for-az,Values=true" --query 'Subnets[0].SubnetId' --output text | tr "\\t" ","`
+                - SUBNET_2=`aws ec2 describe-subnets --region us-east-1 --filters "Name=vpc-id,Values=$VPC_ID" "Name=default-for-az,Values=true" --query 'Subnets[1].SubnetId' --output text | tr "\\t" ","`
                 - AWS_ACCOUNT_ID=`echo $CODEBUILD_BUILD_ARN | awk -F":" '{print $5}'`
                 - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${GITHUBREPO}
                 - export IMAGE_TAG=build-`echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}'`
@@ -302,6 +305,10 @@ Resources:
                 - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
                 - docker push $REPOSITORY_URI:$IMAGE_TAG
                 - sed -i -e "s/CHANGE_ME/$IMAGE_TAG/g" ./cloudformation/stack-config.json
+                - sed -i -e "s/CHANGE_ID/$AWS_ACCOUNT_ID/g" ./cloudformation/stack-config.json
+                - sed -i -e "s/CHANGE_VPC/$VPC_ID/g" ./cloudformation/stack-config.json
+                - sed -i -e "s/CHANGE_SUBNET_1/$SUBNET_1/g" ./cloudformation/stack-config.json
+                - sed -i -e "s/CHANGE_SUBNET_2/$SUBNET_2/g" ./cloudformation/stack-config.json
           artifacts:
             files: 
                - imageDetail.json
