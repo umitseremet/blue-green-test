@@ -18,6 +18,16 @@ Parameters:
       - BUILD_GENERAL1_MEDIUM
       - BUILD_GENERAL1_LARGE
     Default: BUILD_GENERAL1_SMALL
+  Vpc:
+    Type: AWS::EC2::VPC::Id
+  Subnet1:
+    Type: AWS::EC2::Subnet::Id
+  Subnet2:
+    Type: AWS::EC2::Subnet::Id
+  EcrRepoName:
+    Type: String
+  ImageUrl:
+    Type: String
 
   CodeBuildImage:
     Type: String
@@ -280,6 +290,16 @@ Resources:
             Value: !Sub ${GitHubRepo}
           - Name: REGION
             Value: ${AWS::Region}
+          - Name: VPC
+            Value: !Sub ${Vpc}
+          - Name: SUBNET1
+            Value: !Sub ${Subnet1}
+          - Name: SUBNET2
+            Value: !Sub ${Subnet2}
+          - Name: ECRREPONAME
+            Value: !Sub ${EcrRepoName}
+          - Name: IMAGEURL
+            Value: !Sub ${ImageUrl}  
       Source:
         Type: GITHUB
         Location: !Sub https://github.com/umitseremet/${GitHubRepo}.git
@@ -288,11 +308,14 @@ Resources:
           phases:
             pre_build:
               commands:
+                - JQ=/usr/bin/jq && curl https://stedolan.github.io/jq/download/linux64/jq > $JQ && chmod +x $JQ
+                - JSON_STRING='{"Vpc":"'"$VPC"'","Subnet1":"'"$SUBNET1"'","Subnet2":"'"$SUBNET2"'","EcrRepoName":"'"$ECRREPONAME"'","ImageUrl":"'"$IMAGEURL"'"}'
                 - AWS_ACCOUNT_ID=`echo $CODEBUILD_BUILD_ARN | awk -F":" '{print $5}'`
                 - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${GITHUBREPO}
                 - export IMAGE_TAG=build-`echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}'`
                 - echo $CODEBUILD_RESOLVED_SOURCE_VERSION      
                 - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
+                - echo echo "{"$JSON_STRING"}" > ./cloudformation/stack-config.json
             install:
               runtime-versions:
                 java: corretto11
