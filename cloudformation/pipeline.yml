@@ -315,7 +315,7 @@ Resources:
                 - export IMAGE_TAG=build-`echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}'`
                 - echo $CODEBUILD_RESOLVED_SOURCE_VERSION      
                 - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
-                - echo echo "{"$JSON_STRING"}" > ./cloudformation/stack-config.json
+                - echo "{"$JSON_STRING"}" > ./cloudformation/stack-config.json
             install:
               runtime-versions:
                 java: corretto11
