@@ -7,10 +7,8 @@ Parameters:
     Type: String
   GitHubRepo:
     Type: String
-    Default: blue-green-test
   BranchName:
     Type: String
-    Default: master
   ComputeType:
     Type: String
     AllowedValues:
@@ -308,7 +306,6 @@ Resources:
           phases:
             pre_build:
               commands:
-                - JQ=/usr/bin/jq && curl https://stedolan.github.io/jq/download/linux64/jq > $JQ && chmod +x $JQ
                 - JSON_STRING='"Parameters":{"Vpc":"'"$VPC"'","Subnet1":"'"$SUBNET1"'","Subnet2":"'"$SUBNET2"'","EcrRepoName":"'"$ECRREPONAME"'","ImageUrl":"'"$IMAGEURL"'"}'
                 - AWS_ACCOUNT_ID=`echo $CODEBUILD_BUILD_ARN | awk -F":" '{print $5}'`
                 - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${GITHUBREPO}
