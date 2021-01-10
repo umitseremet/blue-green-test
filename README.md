@@ -9,7 +9,7 @@
 
 *Run the command below after completing authentication and aws profile settings;*
 
-`aws cloudformation create-stack --template-body file://cloudformation/pipeline.yml --cli-input-yaml file://cloudformation/pipeline-parameter.yml`
+`aws cloudformation create-stack --template-body file://cloudformation/initial.yml --cli-input-yaml file://cloudformation/initial-parameter.yml`
 
 
 **Configure alarm-based auto-rollback**
