@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Blue-Green Deployment Test on ECS-Fargate
+
+Parameters:
+  RepositoryName:
+    Type: String
+  GitHubRepo:
+    Type: String
+  BranchName:
+    Type: String
+  Vpc:
+    Type: AWS::EC2::VPC::Id
+  Subnet1:
+    Type: AWS::EC2::Subnet::Id
+  Subnet2:
+    Type: AWS::EC2::Subnet::Id
+  EcrRepoName:
+    Type: String
+  ImageUrl:
+    Type: String
+
+
+Resources:
+
+  PipelineStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://blue-green-test-pipeline-artifactbucket-16993ckujk5xm.s3.amazonaws.com/cloudformation/pipeline.yml
+      Parameters:  
+        RepositoryName: !Ref RepositoryName
+        GitHubRepo: !Ref GitHubRepo 
+        BranchName: !Ref BranchName
+        Vpc: !Ref Vpc
+        Subnet1: !Ref Subnet1
+        Subnet2: !Ref Subnet2
+        EcrRepoName: !Ref EcrRepoName
+        ImageUrl: !Ref ImageUrl
+      TimeoutInMinutes: 5       
