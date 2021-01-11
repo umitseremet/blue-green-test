@@ -18,6 +18,7 @@
 
 ```sh
  STACK_NAME=blue-green-test-ecs
+ AWS_ACCOUNT_ID=$(aws sts get-caller-identity|grep role|awk -F":" '{print$6}')
  aws cloudformation update-stack \
     --region us-east-1 \
     --stack-name $STACK_NAME  \
